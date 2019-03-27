@@ -2,9 +2,14 @@ A summary of each issue fixed should be documented here along with the code chan
 
 For a details of release notes see https://github.com/quartz-scheduler/quartz/releases[GitHub Release]
 
-== quartz-2.3.1
+
+== quartz-2.3.2
 
 This release is still work in progress under `quartz-2.3.x` branch!
+
+== quartz-2.3.1
+
+Released on 25-Mar-2018
 
 THIS RELEASE REQUIRES JDK7
 
