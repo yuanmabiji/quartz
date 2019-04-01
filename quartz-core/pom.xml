@@ -28,6 +28,7 @@
       <groupId>com.zaxxer</groupId>
       <artifactId>HikariCP</artifactId>
       <version>${hikaricp.version}</version>
+      <scope>provided</scope>
     </dependency>
 
     <dependency>
