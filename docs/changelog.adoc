@@ -8,9 +8,8 @@ This release is still work in progress under `master` branch!
 
 THIS RELEASE REQUIRES JDK8
 
-* #161 depen: Upgrade to use JDK8
-* #304 depen: Upgrade HikariCP 3.2.0 to jdk8 compatible
-* #334 test: Make test database port configurable through CI props
+- https://github.com/quartz-scheduler/quartz/milestone/6[Open Issues]
+- https://github.com/quartz-scheduler/quartz/milestone/6?closed=1[Completed Issues]
 
 
 == quartz-2.3.1
