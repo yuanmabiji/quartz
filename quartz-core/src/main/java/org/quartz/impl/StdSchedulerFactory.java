@@ -66,6 +66,8 @@ import org.quartz.utils.PropertiesParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Enumeration;
+
 /**
  * <p>
  * An implementation of <code>{@link org.quartz.SchedulerFactory}</code> that
@@ -441,19 +443,20 @@ public class StdSchedulerFactory implements SchedulerFactory {
             }
         }
 
-        initialize(overrideWithSysProps(props));
+        initialize(overrideWithSysProps(props, getLog()));
     }
 
     /**
      * Add all System properties to the given <code>props</code>.  Will override
      * any properties that already exist in the given <code>props</code>.
      */
-    private Properties overrideWithSysProps(Properties props) {
+    // Visible for testing
+    static Properties overrideWithSysProps(Properties props, Logger log) {
         Properties sysProps = null;
         try {
             sysProps = System.getProperties();
         } catch (AccessControlException e) {
-            getLog().warn(
+            log.warn(
                 "Skipping overriding quartz properties with System properties " +
                 "during initialization because of an AccessControlException.  " +
                 "This is likely due to not having read/write access for " +
@@ -464,7 +467,17 @@ public class StdSchedulerFactory implements SchedulerFactory {
         }
 
         if (sysProps != null) {
-            props.putAll(sysProps);
+            // Use the propertyNames to iterate to avoid 
+            // a possible ConcurrentModificationException
+            Enumeration<?> en = sysProps.propertyNames();
+            while (en.hasMoreElements()) {
+                Object name = en.nextElement();
+                Object value = sysProps.get(name);
+                if (name instanceof String && value instanceof String) {
+                    // Properties javadoc discourages use of put so we use setProperty
+                    props.setProperty((String) name, (String) value);
+                }
+            }
         }
 
         return props;
