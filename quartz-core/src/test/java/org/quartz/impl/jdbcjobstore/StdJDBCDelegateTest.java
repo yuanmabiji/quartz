@@ -15,6 +15,8 @@
  */
 package org.quartz.impl.jdbcjobstore;
 
+import static org.hamcrest.collection.IsIterableWithSize.iterableWithSize;
+import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -27,6 +29,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 
 import org.quartz.JobPersistenceException;
 import org.quartz.TriggerKey;
@@ -133,6 +136,26 @@ public class StdJDBCDelegateTest extends TestCase {
         OperableTrigger trigger = jdbcDelegate.selectTrigger(conn, TriggerKey.triggerKey("test"));
         assertNull(trigger);
         verify(persistenceDelegate).loadExtendedTriggerProperties(any(Connection.class), any(TriggerKey.class));
+    }
+
+    public void testSelectTriggerToAcquireHonorsMaxCount() throws SQLException {
+
+        StdJDBCDelegate jdbcDelegate = new StdJDBCDelegate();
+
+        Connection conn = mock(Connection.class);
+        PreparedStatement preparedStatement = mock(PreparedStatement.class);
+        ResultSet resultSet = mock(ResultSet.class);
+
+        when(conn.prepareStatement(anyString())).thenReturn(preparedStatement);
+
+        when(preparedStatement.executeQuery()).thenReturn(resultSet);
+
+        when(resultSet.next()).thenReturn(true);
+        when(resultSet.getString(anyString())).thenReturn("test");
+
+        List<TriggerKey> triggerKeys = jdbcDelegate.selectTriggerToAcquire(conn, Long.MAX_VALUE, Long.MIN_VALUE, 10);
+
+        assertThat(triggerKeys, iterableWithSize(10));
     }
 
     static class TestStdJDBCDelegate extends StdJDBCDelegate {
