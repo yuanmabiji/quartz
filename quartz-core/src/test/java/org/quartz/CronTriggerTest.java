@@ -19,6 +19,10 @@ import java.text.ParseException;
 
 import org.quartz.impl.triggers.CronTriggerImpl;
 
+import static java.util.Arrays.asList;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+
 /**
  * Unit test for CronTrigger.
  */
@@ -123,6 +127,42 @@ public class CronTriggerTest extends SerializationTestSupport {
         }
         catch(Exception e) {
         }
+    }
+
+    public void testMisfireInstructionInDerivedBuilder() throws ParseException {
+        for (int policy : asList(
+                Trigger.MISFIRE_INSTRUCTION_IGNORE_MISFIRE_POLICY,
+                Trigger.MISFIRE_INSTRUCTION_SMART_POLICY,
+                CronTrigger.MISFIRE_INSTRUCTION_DO_NOTHING,
+                CronTrigger.MISFIRE_INSTRUCTION_FIRE_ONCE_NOW)
+        ) {
+            CronTriggerImpl trigger = new CronTriggerImpl();
+            trigger.setCronExpression("0 0 12 * * ?");
+            trigger.setMisfireInstruction(policy);
+            assertThat(trigger.getMisfireInstruction(), is(policy));
+
+            CronTrigger copy = trigger.getTriggerBuilder().build();
+            assertThat(copy.getMisfireInstruction(), is(policy));
+        }
+    }
+
+    public void testUndefinedMisfireInstructionInDerivedBuilder() throws ParseException {
+        CronTriggerImpl trigger = new CronTriggerImpl() {
+            @Override
+            public int getMisfireInstruction() {
+                return 12345;
+            }
+        };
+        trigger.setCronExpression("0 0 12 * * ?");
+        try {
+            trigger.setMisfireInstruction(12345);
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertThat(e.getMessage(), is("The misfire instruction code is invalid for this type of trigger."));
+        }
+
+        CronTrigger copy = trigger.getTriggerBuilder().build();
+        assertThat(copy.getMisfireInstruction(), is(Trigger.MISFIRE_INSTRUCTION_SMART_POLICY));
     }
 
     // execute with version number to generate a new version's serialized form
