@@ -124,6 +124,7 @@ public class JobRunShell extends SchedulerListenerSupport implements Runnable {
         JobDetail jobDetail = firedTriggerBundle.getJobDetail();
 
         try {
+            // 实例化一个定时任务job
             job = sched.getJobFactory().newJob(firedTriggerBundle, scheduler);
         } catch (SchedulerException se) {
             sched.notifySchedulerListenersError(
@@ -139,7 +140,7 @@ public class JobRunShell extends SchedulerListenerSupport implements Runnable {
                             + jobDetail.getKey() + "'", se);
             throw se;
         }
-
+        // 新建一个JobExecutionContext实现类对象，保存着定时任务上下文信息
         this.jec = new JobExecutionContextImpl(scheduler, firedTriggerBundle, job);
     }
 
@@ -199,6 +200,7 @@ public class JobRunShell extends SchedulerListenerSupport implements Runnable {
                 // execute the job
                 try {
                     log.debug("Calling execute on job " + jobDetail.getKey());
+                    // 这里是真正执行定时任务的逻辑方法
                     job.execute(jec);
                     endTime = System.currentTimeMillis();
                 } catch (JobExecutionException jee) {

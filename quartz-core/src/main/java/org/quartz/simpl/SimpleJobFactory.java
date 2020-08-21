@@ -41,7 +41,7 @@ public class SimpleJobFactory implements JobFactory {
     protected Logger getLog() {
         return log;
     }
-    
+    // 根据newJob传入的class来实例化一个Job
     public Job newJob(TriggerFiredBundle bundle, Scheduler Scheduler) throws SchedulerException {
 
         JobDetail jobDetail = bundle.getJobDetail();

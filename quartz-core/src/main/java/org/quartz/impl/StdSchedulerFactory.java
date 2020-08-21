@@ -605,7 +605,7 @@ public class StdSchedulerFactory implements SchedulerFactory {
 
         this.cfg = new PropertiesParser(props);
     }
-
+    // 【主线】这个instantiate方法在初始化时被调用，里面会新建QuartzSchedulerThread和WorkerThread并start等
     private Scheduler instantiate() throws SchedulerException {
         if (cfg == null) {
             initialize();
@@ -838,7 +838,7 @@ public class StdSchedulerFactory implements SchedulerFactory {
 
         // Get ThreadPool Properties
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+        // 如果没有配置PROP_THREAD_POOL_CLASS，那么默认用SimpleThreadPool
         String tpClass = cfg.getStringProperty(PROP_THREAD_POOL_CLASS, SimpleThreadPool.class.getName());
 
         if (tpClass == null) {
@@ -856,6 +856,7 @@ public class StdSchedulerFactory implements SchedulerFactory {
         }
         tProps = cfg.getPropertyGroup(PROP_THREAD_POOL_PREFIX, true);
         try {
+            // 这里应该是给SimpleThreadPool的属性赋值
             setBeanProps(tp, tProps);
         } catch (Exception e) {
             initException = new SchedulerException("ThreadPool class '"
@@ -1329,7 +1330,7 @@ public class StdSchedulerFactory implements SchedulerFactory {
             for (int i = 0; i < plugins.length; i++) {
                 rsrcs.addSchedulerPlugin(plugins[i]);
             }
-    
+            // 创建一个QuartzScheduler实例，其中在这个构造函数里面也创建并开启了QuartzSchedulerThread线程并开启，当然还有其他逻辑
             qs = new QuartzScheduler(rsrcs, idleWaitTime, dbFailureRetry);
             qsInited = true;
     
@@ -1559,6 +1560,7 @@ public class StdSchedulerFactory implements SchedulerFactory {
      * will be called by this method.
      * </p>
      */
+    // 【主线】在getScheduler方法里执行初始化逻辑
     public Scheduler getScheduler() throws SchedulerException {
         if (cfg == null) {
             initialize();

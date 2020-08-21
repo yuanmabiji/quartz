@@ -698,7 +698,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                         "Failure occured during job recovery.", se);
             }
         }
-
+        // 这里创建MisfireHandler线程并启动该线程
         misfireHandler = new MisfireHandler();
         if(initializersLoader != null)
             misfireHandler.setContextClassLoader(initializersLoader);

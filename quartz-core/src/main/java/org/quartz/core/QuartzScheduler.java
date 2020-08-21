@@ -211,7 +211,7 @@ public class QuartzScheduler implements RemotableQuartzScheduler {
         if (resources.getJobStore() instanceof JobListener) {
             addInternalJobListener((JobListener)resources.getJobStore());
         }
-
+        // 【主线】这里新建一个QuartzSchedulerThread并启动这个线程
         this.schedThread = new QuartzSchedulerThread(this, resources);
         ThreadExecutor schedThreadExecutor = resources.getThreadExecutor();
         schedThreadExecutor.execute(this.schedThread);

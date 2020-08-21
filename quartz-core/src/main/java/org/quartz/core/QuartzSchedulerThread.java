@@ -274,7 +274,7 @@ public class QuartzSchedulerThread extends Thread {
                     } catch (Exception ignore) {
                     }
                 }
-
+                // 检查有无可用的调度定时任务的工作者线程
                 int availThreadCount = qsRsrcs.getThreadPool().blockForAvailableThreads();
                 if(availThreadCount > 0) { // will always be true, due to semantics of blockForAvailableThreads...
 
@@ -284,6 +284,7 @@ public class QuartzSchedulerThread extends Thread {
 
                     clearSignaledSchedulingChange();
                     try {
+                        // 获取可用的triggers
                         triggers = qsRsrcs.getJobStore().acquireNextTriggers(
                                 now + idleWaitTime, Math.min(availThreadCount, qsRsrcs.getMaxBatchSize()), qsRsrcs.getBatchTimeWindow());
                         acquiresFailed = 0;
@@ -311,6 +312,7 @@ public class QuartzSchedulerThread extends Thread {
                     if (triggers != null && !triggers.isEmpty()) {
 
                         now = System.currentTimeMillis();
+                        // 获取Trigger的下一次触发时间
                         long triggerTime = triggers.get(0).getNextFireTime().getTime();
                         long timeUntilTrigger = triggerTime - now;
                         while(timeUntilTrigger > 2) {
@@ -350,6 +352,7 @@ public class QuartzSchedulerThread extends Thread {
                         }
                         if(goAhead) {
                             try {
+                                // 这也是一个很重要的步骤
                                 List<TriggerFiredResult> res = qsRsrcs.getJobStore().triggersFired(triggers);
                                 if(res != null)
                                     bndles = res;
@@ -366,7 +369,7 @@ public class QuartzSchedulerThread extends Thread {
                             }
 
                         }
-
+                        // 拿到前面triggersFired的结果进行处理
                         for (int i = 0; i < bndles.size(); i++) {
                             TriggerFiredResult result =  bndles.get(i);
                             TriggerFiredBundle bndle =  result.getTriggerFiredBundle();
@@ -388,13 +391,16 @@ public class QuartzSchedulerThread extends Thread {
 
                             JobRunShell shell = null;
                             try {
+                                // 注意JobRunShell是提供job执行的一个“安全”的外壳，定时任务在JobRunShell这个线程里执行
                                 shell = qsRsrcs.getJobRunShellFactory().createJobRunShell(bndle);
+                                // 实例化一个定时任务job和新建一个JobExecutionContext实现类对象，保存着定时任务上下文信息
                                 shell.initialize(qs);
                             } catch (SchedulerException se) {
                                 qsRsrcs.getJobStore().triggeredJobComplete(triggers.get(i), bndle.getJobDetail(), CompletedExecutionInstruction.SET_ALL_JOB_TRIGGERS_ERROR);
                                 continue;
                             }
-
+                            // 【主线逻辑】这里很重要，这里是QuartzSchedulerThread调度worker线程来执行JobRunSchell里面的run逻辑
+                            // 即执行job定时任务的业务逻辑了
                             if (qsRsrcs.getThreadPool().runInThread(shell) == false) {
                                 // this case should never happen, as it is indicative of the
                                 // scheduler being shutdown or a bug in the thread pool or

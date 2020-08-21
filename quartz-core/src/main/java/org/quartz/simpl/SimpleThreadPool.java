@@ -272,13 +272,14 @@ public class SimpleThreadPool implements ThreadPool {
 
         // create the worker threads and start them
         Iterator<WorkerThread> workerThreads = createWorkerThreads(count).iterator();
+        // 启动所有工作者线程
         while(workerThreads.hasNext()) {
             WorkerThread wt = workerThreads.next();
             wt.start();
             availWorkers.add(wt);
         }
     }
-
+    // 根据配置的线程池数量创建相应的线程数量
     protected List<WorkerThread> createWorkerThreads(int createCount) {
         workers = new LinkedList<WorkerThread>();
         for (int i = 1; i<= createCount; ++i) {
@@ -411,11 +412,11 @@ public class SimpleThreadPool implements ThreadPool {
         if (runnable == null) {
             return false;
         }
-
+        // TODO 这里只有一个QuartzSchedulerThread，为啥还有synchronized关键字呢？？？
         synchronized (nextRunnableLock) {
 
             handoffPending = true;
-
+            // 若没有空闲的工作者线程，这里一直阻塞等待
             // Wait until a worker thread is available
             while ((availWorkers.size() < 1) && !isShutdown) {
                 try {
@@ -423,10 +424,13 @@ public class SimpleThreadPool implements ThreadPool {
                 } catch (InterruptedException ignore) {
                 }
             }
-
+            // 能执行到这里，说明已经拿到了一个空闲的工作者线程了
             if (!isShutdown) {
+                // 空闲工作者线程列表减1
                 WorkerThread wt = (WorkerThread)availWorkers.removeFirst();
+                // 忙碌工作者线程加1
                 busyWorkers.add(wt);
+                // 将JobRunShell作为参数传进去，执行WorkerThread的run方法
                 wt.run(runnable);
             } else {
                 // If the thread pool is going down, execute the Runnable
@@ -503,6 +507,7 @@ public class SimpleThreadPool implements ThreadPool {
 
         /**
          * <p>
+         * 创建一个工作者线程，等待下一个JobRunShell，然后执行
          * Create a worker thread and start it. Waiting for the next Runnable,
          * executing it, and waiting for the next Runnable, until the shutdown
          * flag is set.
@@ -546,8 +551,9 @@ public class SimpleThreadPool implements ThreadPool {
                 if(runnable != null) {
                     throw new IllegalStateException("Already running a Runnable!");
                 }
-
+                // 这里给工作者线程WorkerThread的runnable赋值JobRunShell
                 runnable = newRunnable;
+                // 因为前面给工作者线程WorkerThread的runnable赋值了JobRunShell，此时唤醒所有阻塞的工作者线程即可
                 lock.notifyAll();
             }
         }
@@ -557,6 +563,8 @@ public class SimpleThreadPool implements ThreadPool {
          * Loop, executing targets as they are received.
          * </p>
          */
+        // TODO 这里的WorkerThread是啥时候start的，哪里调用了start方法？？？
+        // 答：在initialize()方法创建WorkerThread（即WorkerThread构造函数里面start的）
         @Override
         public void run() {
             boolean ran = false;
@@ -564,12 +572,16 @@ public class SimpleThreadPool implements ThreadPool {
             while (run.get()) {
                 try {
                     synchronized(lock) {
+                        // 若runnable为空则说明QuartzSchedulerThread的run方法还没执SimpleThreadPool的runInThread方法，没有传JobRunShell线程进来
+                        // 若runnable为空则WorkerThread工作者线程一直阻塞
                         while (runnable == null && run.get()) {
                             lock.wait(500);
                         }
-
+                        // 执行到这里，则说明QuartzSchedulerThread的run方法执行了SimpleThreadPool的runInThread方法，
+                        // 进而执行了WorkerThread的run（非实现线程的那个run方法），此时前面所有阻塞的工作者线程被唤醒
                         if (runnable != null) {
                             ran = true;
+                            // 工作者线程被唤醒后，此时执行JobRunShell里的run方法，进而执行定时任务Job
                             runnable.run();
                         }
                     }
@@ -588,6 +600,7 @@ public class SimpleThreadPool implements ThreadPool {
                         // ignore to help with a tomcat glitch
                     }
                 } finally {
+                    // 工作者线程执行完定时任务后将runnable即（JonRunShell）置空
                     synchronized(lock) {
                         runnable = null;
                     }
@@ -595,12 +608,16 @@ public class SimpleThreadPool implements ThreadPool {
                     if(getPriority() != tp.getThreadPriority()) {
                         setPriority(tp.getThreadPriority());
                     }
-
+                    // 好像一般不会执行到这里
                     if (runOnce) {
                            run.set(false);
                         clearFromBusyWorkersList(this);
+                    // 工作者线程执行完定时任务后
                     } else if(ran) {
+                        // 此时将ran置为false
                         ran = false;
+                        // 忙碌工作者线程减1，空闲工作者线程加1
+                        // 还有唤醒nextRunnableLock锁阻塞的线程 TODO 这个线程是什么呢？
                         makeAvailable(this);
                     }
 
