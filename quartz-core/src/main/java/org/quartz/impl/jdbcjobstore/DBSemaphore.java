@@ -108,8 +108,18 @@ public abstract class DBSemaphore implements Semaphore, Constants,
                 "Lock '" + lockName + "' is desired by: "
                         + Thread.currentThread().getName());
         }
+        // 该线程没有获得数据库锁
         if (!isLockOwner(lockName)) {
+            /*
+            public static final String SELECT_FOR_LOCK = "SELECT * FROM "
+            + TABLE_PREFIX_SUBST + TABLE_LOCKS + " WHERE " + COL_SCHEDULER_NAME + " = " + SCHED_NAME_SUBST
+            + " AND " + COL_LOCK_NAME + " = ? FOR UPDATE";
 
+            public static final String INSERT_LOCK = "INSERT INTO "
+                + TABLE_PREFIX_SUBST + TABLE_LOCKS + "(" + COL_SCHEDULER_NAME + ", " + COL_LOCK_NAME + ") VALUES ("
+                + SCHED_NAME_SUBST + ", ?)";
+             */
+            // 获得数据库锁
             executeSQL(conn, lockName, expandedSQL, expandedInsertSQL);
             
             if(log.isDebugEnabled()) {
@@ -117,6 +127,7 @@ public abstract class DBSemaphore implements Semaphore, Constants,
                     "Lock '" + lockName + "' given to: "
                             + Thread.currentThread().getName());
             }
+            // 把lockName加到当前线程锁集合 TODO 假如线程锁集合是干嘛呢？目的？
             getThreadLocks().add(lockName);
             //getThreadLocksObtainer().put(lockName, new
             // Exception("Obtainer..."));

@@ -17,6 +17,8 @@
 
 package org.quartz.impl.jdbcjobstore;
 
+import com.sun.xml.internal.bind.v2.TODO;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -54,7 +56,7 @@ public class StdRowLockSemaphore extends DBSemaphore {
      * 
      * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
      */
-
+    // 创建StdRowLockSemaphore数据库行锁处理器，同时调用父类DBSemaphore给数据库锁sql赋值
     public StdRowLockSemaphore() {
         super(DEFAULT_TABLE_PREFIX, null, SELECT_FOR_LOCK, INSERT_LOCK);
     }
@@ -112,6 +114,7 @@ public class StdRowLockSemaphore extends DBSemaphore {
         do {
             count++;
             try {
+                // 准备prepareStatement
                 ps = conn.prepareStatement(expandedSQL);
                 ps.setString(1, lockName);
                 
@@ -120,7 +123,10 @@ public class StdRowLockSemaphore extends DBSemaphore {
                         "Lock '" + lockName + "' is being obtained: " + 
                         Thread.currentThread().getName());
                 }
+                // 执行select for update语句获得锁，如果此时该行锁被其他机器的线程获得，此时阻塞等待；
+                // 若成功返回则有两种情况：【1】rs有记录则获得锁；【2】rs为空则说明还没有任何线程获得锁，此时插入一条街记录
                 rs = ps.executeQuery();
+                // 如果rs没有记录此时插入一条记录，TODO 问题：难道成功插入一条记录后就成功获得该锁吗？为啥呢
                 if (!rs.next()) {
                     getLog().debug(
                             "Inserting new lock row for lock: '" + lockName + "' being obtained by thread: " + 
@@ -131,9 +137,9 @@ public class StdRowLockSemaphore extends DBSemaphore {
                     ps = null;
                     ps = conn.prepareStatement(expandedInsertSQL);
                     ps.setString(1, lockName);
-    
+                    // 插入一条锁记录
                     int res = ps.executeUpdate();
-                    
+                    // 如果没有成功插入一条记录，则重试while循环。说不定其他线程已经正在插入这个锁记录，然后重新执行for update获取锁
                     if(res != 1) {
                         if(count < maxRetryLocal) {
                             // pause a bit to give another thread some time to commit the insert of the new lock row
@@ -151,7 +157,7 @@ public class StdRowLockSemaphore extends DBSemaphore {
                             " for lock named: " + lockName, getTablePrefix(), getSchedulerNameLiteral()));
                     }
                 }
-                
+                // TODO 问题：成功插入一条记录后也会执行到这里，难道也代表获得了一把锁？
                 return; // obtained lock, go
             } catch (SQLException sqle) {
                 //Exception src =

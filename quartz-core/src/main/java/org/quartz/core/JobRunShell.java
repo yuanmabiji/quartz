@@ -121,6 +121,7 @@ public class JobRunShell extends SchedulerListenerSupport implements Runnable {
         this.qs = sched;
 
         Job job = null;
+        // 从之前传进来的trigger里获取到jobDetail
         JobDetail jobDetail = firedTriggerBundle.getJobDetail();
 
         try {

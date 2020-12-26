@@ -2795,12 +2795,13 @@ public abstract class JobStoreSupport implements JobStore, Constants {
         
         String lockName;
         if(isAcquireTriggersWithinLock() || maxCount > 1) { 
-            lockName = LOCK_TRIGGER_ACCESS;
+            lockName = LOCK_TRIGGER_ACCESS; // LOCK_TRIGGER_ACCESS = TRIGGER_ACCESS
         } else {
             lockName = null;
         }
         return executeInNonManagedTXLock(lockName, 
                 new TransactionCallback<List<OperableTrigger>>() {
+                    // 获取可用的triggers，TODO 线程执行execute方法的前提条件是获得锁，为什么？
                     public List<OperableTrigger> execute(Connection conn) throws JobPersistenceException {
                         return acquireNextTrigger(conn, noLaterThan, maxCount, timeWindow);
                     }
@@ -2835,6 +2836,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
         }
         
         List<OperableTrigger> acquiredTriggers = new ArrayList<OperableTrigger>();
+        // 用于相同job不能并发执行的set集合
         Set<JobKey> acquiredJobKeysForNoConcurrentExec = new HashSet<JobKey>();
         final int MAX_DO_LOOP_RETRY = 3;
         int currentLoopCount = 0;
@@ -2871,7 +2873,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                         }
                         continue;
                     }
-                    
+                    // 判断相同定义的job是否运行并发执行的逻辑在这里
                     if (job.isConcurrentExectionDisallowed()) {
                         if (acquiredJobKeysForNoConcurrentExec.contains(jobKey)) {
                             continue; // next trigger
@@ -2879,7 +2881,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                             acquiredJobKeysForNoConcurrentExec.add(jobKey);
                         }
                     }
-
+                    // 下次出发时间
                     Date nextFireTime = nextTrigger.getNextFireTime();
 
                     // A trigger should not return NULL on nextFireTime when fetched from DB.
@@ -2898,11 +2900,13 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                     }
                     // We now have a acquired trigger, let's add to return list.
                     // If our trigger was no longer in the expected state, try a new one.
+                    // 更新TRIGGERS表的trigger的状态由原来的STATE_WAITING为STATE_ACQUIRED
                     int rowsUpdated = getDelegate().updateTriggerStateFromOtherState(conn, triggerKey, STATE_ACQUIRED, STATE_WAITING);
                     if (rowsUpdated <= 0) {
                         continue; // next trigger
                     }
                     nextTrigger.setFireInstanceId(getFiredTriggerRecordId());
+                    // 往FIRED_TRIGGERS表插入一条记录，状态为STATE_ACQUIRED
                     getDelegate().insertFiredTrigger(conn, nextTrigger, STATE_ACQUIRED, null);
 
                     if(acquiredTriggers.isEmpty()) {
@@ -3851,20 +3855,23 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                 // If we aren't using db locks, then delay getting DB connection 
                 // until after acquiring the lock since it isn't needed.
                 if (getLockHandler().requiresConnection()) {
+                    // 这里获取一个数据库连接时，同时设置事务的autocommit为false即手动提交
                     conn = getNonManagedTXConnection();
                 }
-                
+                // 使用select for update获得行锁
                 transOwner = getLockHandler().obtainLock(conn, lockName);
             }
             
             if (conn == null) {
                 conn = getNonManagedTXConnection();
             }
-            
+            // 获得数据库锁后，这里执行sql语句，比如获取可用的triggers
             final T result = txCallback.execute(conn);
             try {
+                // 提交事务
                 commitConnection(conn);
             } catch (JobPersistenceException e) {
+                // 回滚事务
                 rollbackConnection(conn);
                 if (txValidator == null || !retryExecuteInNonManagedTXLock(lockName, new TransactionCallback<Boolean>() {
                     @Override
@@ -3891,6 +3898,7 @@ public abstract class JobStoreSupport implements JobStore, Constants {
                     + e.getMessage(), e);
         } finally {
             try {
+                // 释放锁，通过当前线程的hashMap集合是否包含该锁名来判断该线程是否拥有该锁
                 releaseLock(lockName, transOwner);
             } finally {
                 cleanupConnection(conn);

@@ -46,6 +46,11 @@ import org.slf4j.LoggerFactory;
  *
  * @author James House
  */
+// 这是一个生产者线程，不断生产JobRunShell任务给线程池的消费者线程消费
+// 整体流程：QuartzSchedulerThread不断扫描可用的trigers,计算相应trigger下次执行时间，然后阻塞，等执行时间到，生产JobRunShell任务给线程池的消费者线程消费
+// TODO 1，cron表达式是如何生效的？定时执行的逻辑在哪里
+// TODO 2，定时任务执行时，集群分布式锁是如何实现的？
+// TODO 3，之前集群节点定时任务启动初始化时，为啥会重复插入key记录呢？
 public class QuartzSchedulerThread extends Thread {
     /*
      * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -284,7 +289,7 @@ public class QuartzSchedulerThread extends Thread {
 
                     clearSignaledSchedulingChange();
                     try {
-                        // 获取可用的triggers
+                        // 【1】获取可用的triggers
                         triggers = qsRsrcs.getJobStore().acquireNextTriggers(
                                 now + idleWaitTime, Math.min(availThreadCount, qsRsrcs.getMaxBatchSize()), qsRsrcs.getBatchTimeWindow());
                         acquiresFailed = 0;
@@ -312,9 +317,11 @@ public class QuartzSchedulerThread extends Thread {
                     if (triggers != null && !triggers.isEmpty()) {
 
                         now = System.currentTimeMillis();
-                        // 获取Trigger的下一次触发时间
+                        // 【2】获取Trigger的下一次触发时间 TODO 很多triggers，这里为啥总是拿出第一个trigger呢？
                         long triggerTime = triggers.get(0).getNextFireTime().getTime();
+                        // 计算下次执行时间距离现在还有多久
                         long timeUntilTrigger = triggerTime - now;
+                        // 如果距离下次触发时间大于2毫秒，此时需要阻塞等待；若小于则直接执行定时任务逻辑，因为要给定时程序执行预留点时间？
                         while(timeUntilTrigger > 2) {
                             synchronized (sigLock) {
                                 if (halted.get()) {
@@ -324,9 +331,11 @@ public class QuartzSchedulerThread extends Thread {
                                     try {
                                         // we could have blocked a long while
                                         // on 'synchronize', so we must recompute
+                                        // 因为获得锁需要一段时间，因此重新计算下次触发的时间间隔
                                         now = System.currentTimeMillis();
                                         timeUntilTrigger = triggerTime - now;
                                         if(timeUntilTrigger >= 1)
+                                            // 【重要】 阻塞等待直到下次触发时间到 TODO
                                             sigLock.wait(timeUntilTrigger);
                                     } catch (InterruptedException ignore) {
                                     }
@@ -391,15 +400,15 @@ public class QuartzSchedulerThread extends Thread {
 
                             JobRunShell shell = null;
                             try {
-                                // 注意JobRunShell是提供job执行的一个“安全”的外壳，定时任务在JobRunShell这个线程里执行
+                                // 【3】注意JobRunShell是提供job执行的一个“安全”的外壳，定时任务在JobRunShell这个线程里执行
                                 shell = qsRsrcs.getJobRunShellFactory().createJobRunShell(bndle);
-                                // 实例化一个定时任务job和新建一个JobExecutionContext实现类对象，保存着定时任务上下文信息
+                                // 【4】实例化一个定时任务job和新建一个JobExecutionContext实现类对象，保存着定时任务上下文信息
                                 shell.initialize(qs);
                             } catch (SchedulerException se) {
                                 qsRsrcs.getJobStore().triggeredJobComplete(triggers.get(i), bndle.getJobDetail(), CompletedExecutionInstruction.SET_ALL_JOB_TRIGGERS_ERROR);
                                 continue;
                             }
-                            // 【主线逻辑】这里很重要，这里是QuartzSchedulerThread调度worker线程来执行JobRunSchell里面的run逻辑
+                            // 【5】【主线逻辑】这里很重要，这里是QuartzSchedulerThread调度worker线程来执行JobRunSchell里面的run逻辑
                             // 即执行job定时任务的业务逻辑了
                             if (qsRsrcs.getThreadPool().runInThread(shell) == false) {
                                 // this case should never happen, as it is indicative of the

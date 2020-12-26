@@ -46,6 +46,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author James House
  * @author Juergen Donnerstag
  */
+// SimpleThreadPool实质跟ThreadPoolExecutor线程池一样，是一个生产者-消费者模型。
+// SimpleThreadPool：生产者是QuartzSchedulerThread，消费者是WorkerThread。QuartzSchedulerThread获取到相应trigger会往里面扔一个JobRunShell对象
+// ThreadPoolExecutor:生产者是用户线程，消费者是Worker线程，只不过ThreadPoolExecutor用了阻塞队列
 public class SimpleThreadPool implements ThreadPool {
 
     /*
@@ -413,6 +416,8 @@ public class SimpleThreadPool implements ThreadPool {
             return false;
         }
         // TODO 这里只有一个QuartzSchedulerThread，为啥还有synchronized关键字呢？？？
+        // 答案：难道是为了实现生产者消费者模型，因为nextRunnableLock.notifyAll();需要synchronized关键字配合.
+        // 类似Dubbo的DefaultFuture也会有个ReentrantLock锁对象来实现线程的唤醒机制。
         synchronized (nextRunnableLock) {
 
             handoffPending = true;
@@ -430,7 +435,7 @@ public class SimpleThreadPool implements ThreadPool {
                 WorkerThread wt = (WorkerThread)availWorkers.removeFirst();
                 // 忙碌工作者线程加1
                 busyWorkers.add(wt);
-                // 将JobRunShell作为参数传进去，执行WorkerThread的run方法
+                // 将JobRunShell作为参数传进去，执行WorkerThread的run方法，这个不是覆盖Runnable的的run方法
                 wt.run(runnable);
             } else {
                 // If the thread pool is going down, execute the Runnable
@@ -551,6 +556,7 @@ public class SimpleThreadPool implements ThreadPool {
                 if(runnable != null) {
                     throw new IllegalStateException("Already running a Runnable!");
                 }
+                // 典型的生产者消费者模型
                 // 这里给工作者线程WorkerThread的runnable赋值JobRunShell
                 runnable = newRunnable;
                 // 因为前面给工作者线程WorkerThread的runnable赋值了JobRunShell，此时唤醒所有阻塞的工作者线程即可
@@ -571,10 +577,14 @@ public class SimpleThreadPool implements ThreadPool {
             
             while (run.get()) {
                 try {
+                    // 【1】该消费者线程会尝试获得锁，如果获得锁但runnable又为null（即生产者还没生产一个JobRunShell对象），此时该线程会等待；
+                    // 【2】如果该消费者线程没有获得锁，此时会等待获取到该锁的线程释放锁才能获得锁
                     synchronized(lock) {
                         // 若runnable为空则说明QuartzSchedulerThread的run方法还没执SimpleThreadPool的runInThread方法，没有传JobRunShell线程进来
                         // 若runnable为空则WorkerThread工作者线程一直阻塞
                         while (runnable == null && run.get()) {
+                            // TODO 所有的消费者线程都会在之类阻塞等待？与ReentrantLock实现的生产者消费者模型有啥区别？多个消费者执行这段代码时，其他消费者线程在哪里等待？
+                            // TODO 为什么await()后会执行lock.unlock,await()时不就释放锁了吗
                             lock.wait(500);
                         }
                         // 执行到这里，则说明QuartzSchedulerThread的run方法执行了SimpleThreadPool的runInThread方法，
@@ -585,6 +595,9 @@ public class SimpleThreadPool implements ThreadPool {
                             runnable.run();
                         }
                     }
+                    // 这里执行定时任务业务逻辑时遇到任何异常不会往外抛出
+                    // TODO 【问题】假如线程池的线程往外抛出，此时又不从线程池里移除该线程，此时该线程还能执行任务么？还是会退出？
+                    // java的线程池若一个线程执行任务抛出异常，此时会往外抛，然后线程池会移除该条线程然后又新增一条线程
                 } catch (InterruptedException unblock) {
                     // do nothing (loop will terminate if shutdown() was called
                     try {
