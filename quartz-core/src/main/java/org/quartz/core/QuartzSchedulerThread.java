@@ -50,7 +50,13 @@ import org.slf4j.LoggerFactory;
 // 整体流程：QuartzSchedulerThread不断扫描可用的trigers,计算相应trigger下次执行时间，然后阻塞，等执行时间到，生产JobRunShell任务给线程池的消费者线程消费
 // TODO 1，cron表达式是如何生效的？定时执行的逻辑在哪里
 // TODO 2，定时任务执行时，集群分布式锁是如何实现的？
+// 答案：QuartzSchedulerThread获取trigger时，此时会加锁。同时更新trigger下次触发的时间。然后返回trigger，然后释放锁。最后执行业务逻辑。
+// 为什么把锁的范围扩展到执行业务线程那里呢？当然就是锁的范围越小越好。
+// TODO 有很多定时任务的情况下，是不是每个定时任务对应一个trigger，此时又是怎样加锁的呢？
 // TODO 3，之前集群节点定时任务启动初始化时，为啥会重复插入key记录呢？
+// TODO QuartzSchedulerThread执行完一次会阻塞么？还是一直执行？用Jconsole或JvisualVM观察该线程即可
+    // TODO QuartzSchedulerThread作为生产者线程，会不断查找triggers，此时有很多tirggers，此时该线程是怎样触发这些triggers？
+//  TODO 如果因为某个trigger时间未到而阻塞，那么必然会错失另外要触发的triggers的时间。
 public class QuartzSchedulerThread extends Thread {
     /*
      * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -245,6 +251,7 @@ public class QuartzSchedulerThread extends Thread {
      * The main processing loop of the <code>QuartzSchedulerThread</code>.
      * </p>
      */
+    // 这个主线程应该不会抛出任何异常，否则应该会停止退出
     @Override
     public void run() {
         int acquiresFailed = 0;
@@ -317,7 +324,7 @@ public class QuartzSchedulerThread extends Thread {
                     if (triggers != null && !triggers.isEmpty()) {
 
                         now = System.currentTimeMillis();
-                        // 【2】获取Trigger的下一次触发时间 TODO 很多triggers，这里为啥总是拿出第一个trigger呢？
+                        // 【2】获取Trigger的下一次触发时间 TODO 很多triggers，这里为啥总是拿出第一个trigger呢？有哪里要移除相应的trigger吗
                         long triggerTime = triggers.get(0).getNextFireTime().getTime();
                         // 计算下次执行时间距离现在还有多久
                         long timeUntilTrigger = triggerTime - now;
@@ -335,7 +342,7 @@ public class QuartzSchedulerThread extends Thread {
                                         now = System.currentTimeMillis();
                                         timeUntilTrigger = triggerTime - now;
                                         if(timeUntilTrigger >= 1)
-                                            // 【重要】 阻塞等待直到下次触发时间到 TODO
+                                            // 【重要】 阻塞等待直到下次触发时间到 TODO 这里阻塞的话，假如另外一个trigger时间到了，该线程阻塞了，此时是怎么处理的？
                                             sigLock.wait(timeUntilTrigger);
                                     } catch (InterruptedException ignore) {
                                     }
@@ -361,7 +368,7 @@ public class QuartzSchedulerThread extends Thread {
                         }
                         if(goAhead) {
                             try {
-                                // 这也是一个很重要的步骤
+                                // 这也是一个很重要的步骤，估計跟数据库LOCKS表STATE_ACCESS行加锁有关（猜测）
                                 List<TriggerFiredResult> res = qsRsrcs.getJobStore().triggersFired(triggers);
                                 if(res != null)
                                     bndles = res;
@@ -427,7 +434,8 @@ public class QuartzSchedulerThread extends Thread {
                     // should never happen, if threadPool.blockForAvailableThreads() follows contract
                     continue; // while (!halted)
                 }
-
+                // 保证负载平衡的方法,每次执行一轮触发后,本scheduler会等待一个随机的时间,这样就使得其他节点上的scheduler可以得到资源.
+                // TODO 这里不是一直执行不到么？
                 long now = System.currentTimeMillis();
                 long waitTime = now + getRandomizedIdleWaitTime();
                 long timeUntilContinue = waitTime - now;

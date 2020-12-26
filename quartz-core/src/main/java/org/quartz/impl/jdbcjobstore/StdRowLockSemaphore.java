@@ -126,7 +126,8 @@ public class StdRowLockSemaphore extends DBSemaphore {
                 // 执行select for update语句获得锁，如果此时该行锁被其他机器的线程获得，此时阻塞等待；
                 // 若成功返回则有两种情况：【1】rs有记录则获得锁；【2】rs为空则说明还没有任何线程获得锁，此时插入一条街记录
                 rs = ps.executeQuery();
-                // 如果rs没有记录此时插入一条记录，TODO 问题：难道成功插入一条记录后就成功获得该锁吗？为啥呢
+                // 如果rs没有记录此时插入一条记录，TODO 问题：难道成功插入一条记录后就成功获得该锁吗？为啥呢?
+                //  TODO 来自：https://blog.csdn.net/honghailiang888/article/details/104614917  获取行锁的方式，insert是保证获取锁，因为select for update失败也可能没有这条数据。?
                 if (!rs.next()) {
                     getLog().debug(
                             "Inserting new lock row for lock: '" + lockName + "' being obtained by thread: " + 

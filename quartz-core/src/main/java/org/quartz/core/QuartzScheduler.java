@@ -214,6 +214,7 @@ public class QuartzScheduler implements RemotableQuartzScheduler {
         // 【主线】这里新建一个QuartzSchedulerThread并启动这个线程
         this.schedThread = new QuartzSchedulerThread(this, resources);
         ThreadExecutor schedThreadExecutor = resources.getThreadExecutor();
+        // 启动QuartzSchedulerThread线程
         schedThreadExecutor.execute(this.schedThread);
         if (idleWaitTime > 0) {
             this.schedThread.setIdleWaitTime(idleWaitTime);
