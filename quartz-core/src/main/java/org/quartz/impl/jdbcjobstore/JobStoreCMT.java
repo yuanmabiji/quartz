@@ -221,6 +221,7 @@ public class JobStoreCMT extends JobStoreSupport {
      * @see JobStoreSupport#getNonManagedTXConnection()
      * @see JobStoreSupport#getConnection()
      */
+    // TODO 为何CMT没有提交事务这个操作？难道事务是自动提交，此时与TX有啥区别？而TX却有手动提交事务？
     @Override
     protected Object executeInLock(
             String lockName, 
